@@ -5,6 +5,8 @@ import javafx.geometry.Point2D;
 import java.util.function.Function;
 
 /**
+ * Parabola function.
+ *
  * @author Karol Krol
  */
 public class Parabola implements Function<Double, Double> {
@@ -19,11 +21,11 @@ public class Parabola implements Function<Double, Double> {
         this.c = c;
     }
 
-    public Parabola build(final Point2D focusPoint, final double lineYPos) {
+    public static Parabola create(final Point2D focusPoint, final double lineYPos) {
         final double bcSum = focusPoint.getY() + lineYPos;
         final double bcDif = focusPoint.getY() - lineYPos;
         final double a = 1.0 / (2.0 * bcDif);
-        final double b = - focusPoint.getX() / bcDif;
+        final double b = -focusPoint.getX() / bcDif;
         final double c = Math.pow(focusPoint.getX(), 2) * a + bcSum / 2;
         return new Parabola(a, b, c);
     }
