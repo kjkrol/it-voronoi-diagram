@@ -1,6 +1,7 @@
 package kjkrol.image.transform.voronoitesselation;
 
 import javafx.geometry.Point2D;
+import lombok.Data;
 
 import java.util.function.Function;
 
@@ -9,6 +10,7 @@ import java.util.function.Function;
  *
  * @author Karol Krol
  */
+@Data
 public class Parabola implements Function<Double, Double> {
 
     private final double a;
@@ -33,17 +35,5 @@ public class Parabola implements Function<Double, Double> {
     @Override
     public Double apply(Double x) {
         return Math.pow(x, 2) * this.a + x * this.b - this.c;
-    }
-
-    public double getA() {
-        return a;
-    }
-
-    public double getB() {
-        return b;
-    }
-
-    public double getC() {
-        return c;
     }
 }

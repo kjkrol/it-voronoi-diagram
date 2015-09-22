@@ -2,23 +2,20 @@ package kjkrol.image.transform.voronoitesselation;
 
 import javafx.geometry.Point2D;
 import lombok.Builder;
-import lombok.Data;
 
 import java.util.*;
 
 /**
  * @author Karol Krol
  */
-@Data
-public abstract class Region {
+public interface Region {
 
-    void refresh(double sweepLineYPos) {
-    }
+    default void refresh(double sweepLineYPos) {};
 
-    abstract Optional<Point2D[]> findIntersection(Parabola parabola);
+    Optional<Point2D[]> findIntersection(Parabola parabola);
 }
 
-class NormalRegion extends Region {
+class NormalRegion implements Region {
     private final Point2D center;
     private final Map<Region, Boundary> boundaries;
     private Parabola parabola;
@@ -47,30 +44,63 @@ class NormalRegion extends Region {
     }
 
     @Override
-    public Optional<Point2D[]> findIntersection(Parabola parabola) {
-        return IntersectionFinder.findParabolasIntersection(this.parabola, parabola);
+    public Optional<Point2D[]> findIntersection(Parabola thatParabola) {
+        final double aDiff = this.getParabola().getA() - thatParabola.getA();
+        final double bDiff = this.getParabola().getB() - thatParabola.getB();
+        final double cDiff = this.getParabola().getC() - thatParabola.getC();
+        final double d = bDiff / (2.0 * aDiff);
+        final double temp = Math.pow(d, 2) - cDiff / aDiff;
+        if (temp < 0) {
+            return Optional.empty();
+        } else if (temp == 0) {
+            final Point2D[] result = {new Point2D(d, this.getParabola().apply(d))};
+            return Optional.of(result);
+        } else {
+            final double e = Math.sqrt(temp);
+            final double deSum = d + e;
+            final double deDif = d - e;
+            final Point2D[] result = {
+                    new Point2D(deSum, this.getParabola().apply(deSum)),
+                    new Point2D(deDif, this.getParabola().apply(deDif))};
+            return Optional.of(result);
+        }
     }
 }
 
 @Builder
-class VerticalRegion extends Region {
+class VerticalRegion implements Region {
 
     private final double xValue;
 
     @Override
-    public Optional<Point2D[]> findIntersection(Parabola parabola) {
-        return IntersectionFinder.findIntersectionOfParabolaAndVerticalLine(parabola, this.xValue);
+    public Optional<Point2D[]> findIntersection(Parabola thatParabola) {
+        final Point2D[] result = {new Point2D(xValue, thatParabola.apply(xValue))};
+        return Optional.of(result);
     }
 }
 
 @Builder
-class HorizontalRegion extends Region {
+class HorizontalRegion implements Region {
 
     private final double yValue;
 
     @Override
-    public Optional<Point2D[]> findIntersection(Parabola parabola) {
-        return IntersectionFinder.findIntersectionOfParabolaAndHorizontalLine(parabola, this.yValue);
+    public Optional<Point2D[]> findIntersection(Parabola thatParabola) {
+        final double temp = Math.pow(thatParabola.getB(), 2) - 4 * thatParabola.getA() * (thatParabola.getC() - yValue);
+        if (temp < 0) {
+            return Optional.empty();
+        } else if (temp == 0) {
+            final double xRes = -1.0 * thatParabola.getB() / (2.0 * thatParabola.getA());
+            final Point2D[] result = {new Point2D(xRes, thatParabola.apply(xRes))};
+            return Optional.of(result);
+        } else {
+            final double xRes1 = (-1.0 * thatParabola.getB() - Math.sqrt(temp)) / (2.0 * thatParabola.getA());
+            final double xRes2 = (-1.0 * thatParabola.getB() + Math.sqrt(temp)) / (2.0 * thatParabola.getA());
+            final Point2D[] result = {
+                    new Point2D(xRes1, thatParabola.apply(xRes1)),
+                    new Point2D(xRes2, thatParabola.apply(xRes2))};
+            return Optional.of(result);
+        }
     }
 }
 
