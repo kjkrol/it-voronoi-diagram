@@ -1,4 +1,4 @@
-package kjkrol.image.transform.voronoitesselation;
+package kjkrol.voronoidiagram;
 
 import javafx.geometry.Point2D;
 import lombok.Builder;
@@ -6,7 +6,6 @@ import lombok.Data;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.DoubleStream;
 
 /**
  * @author Karol Krol
@@ -46,6 +45,18 @@ public class VoronoiDiagram {
         this.rightRegion = VerticalRegion.builder().xValue(width).build();
     }
 
+    public void start() {
+        final AtomicReference<Point2D> prevPointRef = new AtomicReference<>(this.points.poll());
+        this.insertNewRegion(prevPointRef.get(), prevPointRef.get().getX() + EPSILON).ifPresent(regions::add);
+        points.stream().sequential().forEach(point -> {
+            for (double sweepLine = prevPointRef.get().getY(); sweepLine < point.getY(); sweepLine += EPSILON) {
+                sweepLineStep(sweepLine);
+            }
+            this.insertNewRegion(point, point.getX() + EPSILON).ifPresent(regions::add);
+            prevPointRef.set(point);
+        });
+    }
+
     private void init() {
         this.workingList.addAll(Arrays.asList(
                 RegionPart.builder().region(leftRegion).endX(0.0).build(),
@@ -53,47 +64,44 @@ public class VoronoiDiagram {
                 RegionPart.builder().region(rightRegion).endX(this.width).build()));
     }
 
-    public void start() {
-
-        final AtomicReference<Point2D> prevPointRef = new AtomicReference<>(this.points.poll());
-        this.insertNewRegion(prevPointRef.get(), prevPointRef.get().getX() + EPSILON).ifPresent(regions::add);
-        points.stream().sequential().forEach(point -> {
-            for (double sweepLine = prevPointRef.get().getY(); sweepLine < point.getY(); sweepLine += EPSILON) {
-                scan(sweepLine);
-            }
-            this.insertNewRegion(point, point.getX() + EPSILON).ifPresent(regions::add);
-            prevPointRef.set(point);
-        });
-
-    }
-
-    private void scan(double sweepLine) {
+    private void sweepLineStep(double sweepLine) {
         final ListIterator<RegionPart> listIterator = this.workingList.listIterator();
         RegionPart first = listIterator.next();
+        first.getRegion().refresh(sweepLine);
         RegionPart second = listIterator.next();
+        second.getRegion().refresh(sweepLine);
         RegionPart third = listIterator.next();
+        third.getRegion().refresh(sweepLine);
 
-        fidIntersection(first.getRegion(), second.getRegion()).ifPresent(o -> first.setEndX(o.));
-        fidIntersection(second.getRegion(), third.getRegion());
+        this.findEvent(first, second, third);
 
         while (listIterator.hasNext()) {
             first = second;
             second = third;
             third = listIterator.next();
+            third.getRegion().refresh(sweepLine);
+            this.findEvent(first, second, third);
         }
     }
 
-    private Optional<Point2D[]> fidIntersection(Region first, Region second) {
-        if (second instanceof VerticalRegion || second instanceof HorizontalRegion) {
-            if (first instanceof NormalRegion) {
-                return second.findIntersection(((NormalRegion) first).getParabola());
-            }
+    private void findEvent(final RegionPart first, final RegionPart second, final RegionPart third) {
+        fidIntersection(first, second);
+        fidIntersection(second, third);
+
+        //TODO: continue...
+    }
+
+    private Optional<Point2D[]> fidIntersection(final RegionPart first, final RegionPart second) {
+        Optional<Point2D[]> result;
+        if (first.getRegion() instanceof NormalRegion) {
+            return second.getRegion().findIntersection(((NormalRegion) first.getRegion()).getParabola());
+        } else if (second.getRegion() instanceof NormalRegion) {
+            return first.getRegion().findIntersection(((NormalRegion) second.getRegion()).getParabola());
         } else {
-            if (second instanceof NormalRegion) {
-                return first.findIntersection(((NormalRegion) second).getParabola());
-            }
+            result = Optional.empty();
         }
-        return Optional.empty();
+        result.ifPresent(o -> first.setEndX(o[0].getX()));
+        return result;
     }
 
     private Optional<Region> insertNewRegion(Point2D point2D, double sweepLine) {

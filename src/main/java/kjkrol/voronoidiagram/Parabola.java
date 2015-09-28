@@ -1,4 +1,4 @@
-package kjkrol.image.transform.voronoitesselation;
+package kjkrol.voronoidiagram;
 
 import javafx.geometry.Point2D;
 import lombok.Data;
