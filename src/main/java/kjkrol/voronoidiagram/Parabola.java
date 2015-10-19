@@ -1,7 +1,9 @@
 package kjkrol.voronoidiagram;
 
 import javafx.geometry.Point2D;
-import lombok.Data;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.ToString;
 
 import java.util.function.Function;
 
@@ -10,30 +12,27 @@ import java.util.function.Function;
  *
  * @author Karol Krol
  */
-@Data
+@Builder
+@Getter
+@ToString
 public class Parabola implements Function<Double, Double> {
 
     private final double a;
     private final double b;
     private final double c;
 
-    private Parabola(double a, double b, double c) {
-        this.a = a;
-        this.b = b;
-        this.c = c;
-    }
-
-    public static Parabola create(final Point2D focusPoint, final double lineYPos) {
-        final double bcSum = focusPoint.getY() + lineYPos;
-        final double bcDif = focusPoint.getY() - lineYPos;
-        final double a = 1.0 / (2.0 * bcDif);
+    @Builder(builderClassName = "FormalDefinitionBuilder", builderMethodName = "formalDefinitionBuilder")
+    private static Parabola create(final Point2D focusPoint, final double horizontalLine) {
+        final double bcSum = focusPoint.getY() + horizontalLine;
+        final double bcDif = focusPoint.getY() - horizontalLine;
+        final double a = 1.0 / 2.0 / bcDif;
         final double b = -focusPoint.getX() / bcDif;
-        final double c = Math.pow(focusPoint.getX(), 2) * a + bcSum / 2;
+        final double c = Math.pow(focusPoint.getX(), 2.0) * a + bcSum / 2.0;
         return new Parabola(a, b, c);
     }
 
     @Override
     public Double apply(Double x) {
-        return Math.pow(x, 2) * this.a + x * this.b - this.c;
+        return Math.pow(x, 2.0) * this.a + x * this.b + this.c;
     }
 }

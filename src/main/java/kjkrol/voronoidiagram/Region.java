@@ -2,6 +2,8 @@ package kjkrol.voronoidiagram;
 
 import javafx.geometry.Point2D;
 import lombok.Builder;
+import lombok.Getter;
+import lombok.ToString;
 
 import java.util.*;
 
@@ -10,12 +12,13 @@ import java.util.*;
  */
 public interface Region {
 
-    default void refresh(double sweepLineYPos) {};
-
     Optional<Point2D[]> findIntersection(Parabola parabola);
 }
 
+@Getter
+@ToString
 class NormalRegion implements Region {
+
     private final Point2D center;
     private final Map<Region, Boundary> boundaries;
     private Parabola parabola;
@@ -26,21 +29,11 @@ class NormalRegion implements Region {
         this.boundaries = new HashMap<>();
     }
 
-    Point2D getCenter() {
-        return center;
-    }
-
-    Parabola getParabola() {
-        return parabola;
-    }
-
-    Map<Region, Boundary> getBoundaries() {
-        return boundaries;
-    }
-
-    @Override
     public void refresh(double sweepLineYPos) {
-        this.parabola = Parabola.create(this.center, sweepLineYPos);
+        this.parabola = Parabola.formalDefinitionBuilder()
+                .focusPoint(this.center)
+                .horizontalLine(sweepLineYPos)
+                .build();
     }
 
     @Override
@@ -57,17 +50,18 @@ class NormalRegion implements Region {
             return Optional.of(result);
         } else {
             final double e = Math.sqrt(temp);
-            final double deSum = d + e;
-            final double deDif = d - e;
+            final double deSum = -d + e;
+            final double deDif = -d - e;
             final Point2D[] result = {
-                    new Point2D(deSum, this.getParabola().apply(deSum)),
-                    new Point2D(deDif, this.getParabola().apply(deDif))};
+                    new Point2D(deDif, this.getParabola().apply(deDif)),
+                    new Point2D(deSum, this.getParabola().apply(deSum))};
             return Optional.of(result);
         }
     }
 }
 
 @Builder
+@ToString
 class VerticalRegion implements Region {
 
     private final double xValue;
@@ -80,6 +74,7 @@ class VerticalRegion implements Region {
 }
 
 @Builder
+@ToString
 class HorizontalRegion implements Region {
 
     private final double yValue;
@@ -91,17 +86,15 @@ class HorizontalRegion implements Region {
             return Optional.empty();
         } else if (temp == 0) {
             final double xRes = -1.0 * thatParabola.getB() / (2.0 * thatParabola.getA());
-            final Point2D[] result = {new Point2D(xRes, thatParabola.apply(xRes))};
+            final Point2D[] result = {new Point2D(xRes, this.yValue)};
             return Optional.of(result);
         } else {
             final double xRes1 = (-1.0 * thatParabola.getB() - Math.sqrt(temp)) / (2.0 * thatParabola.getA());
             final double xRes2 = (-1.0 * thatParabola.getB() + Math.sqrt(temp)) / (2.0 * thatParabola.getA());
             final Point2D[] result = {
-                    new Point2D(xRes1, thatParabola.apply(xRes1)),
-                    new Point2D(xRes2, thatParabola.apply(xRes2))};
+                    new Point2D(xRes1, this.yValue),
+                    new Point2D(xRes2, this.yValue)};
             return Optional.of(result);
         }
     }
 }
-
-

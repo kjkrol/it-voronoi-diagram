@@ -2,10 +2,11 @@ package kjkrol.voronoidiagram;
 
 import javafx.geometry.Point2D;
 import lombok.Builder;
-import lombok.Data;
+import lombok.Getter;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.DoubleStream;
 
 /**
  * @author Karol Krol
@@ -14,100 +15,60 @@ public class VoronoiDiagram {
 
     private static final double EPSILON = 0.1;
 
-    @Data
-    @Builder
-    private static class RegionPart {
-        private final Region region;
-        private double endX;
-    }
-
-    private final int width;
     private final int height;
     private final Deque<Point2D> points;
+    @Getter
     private final Set<Region> regions = new HashSet<>();
-    private final List<RegionPart> workingList = new ArrayList<>();
+    private final List<RegionPart> currentParts = new LinkedList<>();
 
-    private final Region topRegion;
     private final Region bottomRegion;
-    private final Region leftRegion;
-    private final Region rightRegion;
 
     @Builder
     private VoronoiDiagram(int width, int height, List<Point2D> points) {
-        this.width = width;
         this.height = height;
         Collections.sort(points, (o1, o2) -> (int) (o1.getY() - o2.getY()));
         this.points = new LinkedList<>(points);
-
-        this.topRegion = HorizontalRegion.builder().yValue(0.0).build();
         this.bottomRegion = HorizontalRegion.builder().yValue(height).build();
-        this.leftRegion = VerticalRegion.builder().xValue(0.0).build();
-        this.rightRegion = VerticalRegion.builder().xValue(width).build();
+        this.currentParts.addAll(Arrays.asList(
+                        RegionPart.builder()
+                                .region(VerticalRegion.builder().xValue(0.0).build())
+                                .endX(0.0)
+                                .build(),
+                        RegionPart.builder()
+                                .region(HorizontalRegion.builder().yValue(0.0).build())
+                                .endX(width)
+                                .build(),
+                        RegionPart.builder()
+                                .region(VerticalRegion.builder().xValue(width).build())
+                                .endX(width)
+                                .build()
+                )
+        );
     }
 
     public void start() {
-        final AtomicReference<Point2D> prevPointRef = new AtomicReference<>(this.points.poll());
-        this.insertNewRegion(prevPointRef.get(), prevPointRef.get().getX() + EPSILON).ifPresent(regions::add);
-        points.stream().sequential().forEach(point -> {
-            for (double sweepLine = prevPointRef.get().getY(); sweepLine < point.getY(); sweepLine += EPSILON) {
-                sweepLineStep(sweepLine);
-            }
-            this.insertNewRegion(point, point.getX() + EPSILON).ifPresent(regions::add);
-            prevPointRef.set(point);
-        });
+        final Point2D firstPoint = this.points.poll();
+        final AtomicReference<Double> previous = new AtomicReference<>(firstPoint.getY());
+        this.insertNewRegion(firstPoint, 0.0).ifPresent(this.regions::add);
+        this.points.stream().sequential()
+                .forEach(point -> {
+                    this.steps(point.getY(), previous.getAndSet(point.getY()));
+                    this.insertNewRegion(point, point.getY() + EPSILON).ifPresent(this.regions::add);
+                });
+        this.steps(this.height, previous.get());
     }
 
-    private void init() {
-        this.workingList.addAll(Arrays.asList(
-                RegionPart.builder().region(leftRegion).endX(0.0).build(),
-                RegionPart.builder().region(topRegion).endX(this.width).build(),
-                RegionPart.builder().region(rightRegion).endX(this.width).build()));
-    }
-
-    private void sweepLineStep(double sweepLine) {
-        final ListIterator<RegionPart> listIterator = this.workingList.listIterator();
-        RegionPart first = listIterator.next();
-        first.getRegion().refresh(sweepLine);
-        RegionPart second = listIterator.next();
-        second.getRegion().refresh(sweepLine);
-        RegionPart third = listIterator.next();
-        third.getRegion().refresh(sweepLine);
-
-        this.findEvent(first, second, third);
-
-        while (listIterator.hasNext()) {
-            first = second;
-            second = third;
-            third = listIterator.next();
-            third.getRegion().refresh(sweepLine);
-            this.findEvent(first, second, third);
-        }
-    }
-
-    private void findEvent(final RegionPart first, final RegionPart second, final RegionPart third) {
-        fidIntersection(first, second);
-        fidIntersection(second, third);
-
-        //TODO: continue...
-    }
-
-    private Optional<Point2D[]> fidIntersection(final RegionPart first, final RegionPart second) {
-        Optional<Point2D[]> result;
-        if (first.getRegion() instanceof NormalRegion) {
-            return second.getRegion().findIntersection(((NormalRegion) first.getRegion()).getParabola());
-        } else if (second.getRegion() instanceof NormalRegion) {
-            return first.getRegion().findIntersection(((NormalRegion) second.getRegion()).getParabola());
-        } else {
-            result = Optional.empty();
-        }
-        result.ifPresent(o -> first.setEndX(o[0].getX()));
-        return result;
+    private void steps(final double current, final double previous) {
+        final long limit = Math.round((current - previous) / EPSILON);
+        DoubleStream.iterate(previous, n -> n + EPSILON)
+                .limit(Math.round(limit))
+                .forEachOrdered(this::sweepLineStep);
     }
 
     private Optional<Region> insertNewRegion(Point2D point2D, double sweepLine) {
-        final Region newRegion = NormalRegion.builder().center(point2D).build();
+        final NormalRegion newRegion = NormalRegion.builder().center(point2D).build();
         newRegion.refresh(sweepLine);
-        final ListIterator<RegionPart> listIterator = this.workingList.listIterator();
+        final ListIterator<RegionPart> listIterator = this.currentParts.listIterator();
         while (listIterator.hasNext()) {
             final RegionPart regionPart = listIterator.next();
             if (point2D.getX() < regionPart.getEndX()) {
@@ -119,6 +80,40 @@ public class VoronoiDiagram {
             }
         }
         return Optional.empty();
+    }
+
+    private void sweepLineStep(final double sweepLine) {
+        final AtomicReference<RegionPart> reference = new AtomicReference<>(this.currentParts.get(0));
+        this.currentParts.stream()
+                .skip(1)
+                .forEach(regionPart -> {
+                            this.fidIntersection(reference.get(), regionPart)
+                                    .ifPresent(point2Ds -> {
+                                        regionPart.setCrossPoints(point2Ds);
+                                        reference.get().find3PointsEvent(point2Ds, EPSILON);
+                                    });
+                            reference.set(regionPart);
+                        }
+                );
+        final Iterator<RegionPart> iterator = this.currentParts.iterator();
+        while (iterator.hasNext()) {
+            if (iterator.next().getDeleteMark().get()) {
+                iterator.remove();
+            }
+        }
+    }
+
+    private Optional<Point2D[]> fidIntersection(final RegionPart first, final RegionPart second) {
+        Optional<Point2D[]> result;
+        if (first.getRegion() instanceof NormalRegion) {
+            result = second.getRegion().findIntersection(((NormalRegion) first.getRegion()).getParabola());
+        } else if (second.getRegion() instanceof NormalRegion) {
+            result = first.getRegion().findIntersection(((NormalRegion) second.getRegion()).getParabola());
+        } else {
+            result = Optional.empty();
+        }
+        result.ifPresent(o -> first.setEndX(o[0].getX()));
+        return result;
     }
 
 }
