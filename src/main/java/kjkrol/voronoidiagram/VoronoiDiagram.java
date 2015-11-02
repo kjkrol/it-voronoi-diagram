@@ -19,7 +19,7 @@ public class VoronoiDiagram {
     private final Deque<Point2D> givenPoints;
     @Getter
     private final Set<Region> regions = new HashSet<>();
-    private final List<RegionPart> currentParts = new LinkedList<>();
+    private final List<RegionPart> regionsParts = new LinkedList<>();
 
     private final Region bottomRegion;
 
@@ -29,7 +29,7 @@ public class VoronoiDiagram {
         Collections.sort(givenPoints, (o1, o2) -> (int) (o1.getY() - o2.getY()));
         this.givenPoints = new LinkedList<>(givenPoints);
         this.bottomRegion = HorizontalRegion.builder().yValue(height).build();
-        this.currentParts.addAll(Arrays.asList(
+        this.regionsParts.addAll(Arrays.asList(
                         RegionPart.builder()
                                 .region(VerticalRegion.builder().xValue(0.0).build())
                                 .endX(0.0)
@@ -61,7 +61,7 @@ public class VoronoiDiagram {
     private Optional<Region> insertNewRegion(Point2D point2D) {
         final NormalRegion newRegion = NormalRegion.builder().center(point2D).build();
         newRegion.refresh(point2D.getY() + EPSILON);
-        final ListIterator<RegionPart> listIterator = this.currentParts.listIterator();
+        final ListIterator<RegionPart> listIterator = this.regionsParts.listIterator();
         while (listIterator.hasNext()) {
             final RegionPart regionPart = listIterator.next();
             if (point2D.getX() < regionPart.getEndX()) {
@@ -83,37 +83,20 @@ public class VoronoiDiagram {
     }
     
     private void performSweepLineStep(final double sweepLine) {
-        final AtomicReference<RegionPart> previousRegionPart = new AtomicReference<>(this.currentParts.get(0));
-        this.currentParts.stream()
+        final AtomicReference<RegionPart> previousRegionPart = new AtomicReference<>(this.regionsParts.get(0));
+        this.regionsParts.stream()
                 .skip(1)
                 .forEach(regionPart -> {
-                            this.fidIntersection(previousRegionPart.get(), regionPart)
-                                    .ifPresent(point2Ds -> {
-                                        regionPart.setCrossPoints(point2Ds);
-                                        previousRegionPart.get().find3PointsEvent(point2Ds, EPSILON);
-                                    });
+                            previousRegionPart.get().fidIntersection(regionPart);
                             previousRegionPart.set(regionPart);
                         }
                 );
-        final Iterator<RegionPart> iterator = this.currentParts.iterator();
+        final Iterator<RegionPart> iterator = this.regionsParts.iterator();
         while (iterator.hasNext()) {
             if (iterator.next().getDeleteMark().get()) {
                 iterator.remove();
             }
         }
-    }
-
-    private Optional<Point2D[]> fidIntersection(final RegionPart first, final RegionPart second) {
-        Optional<Point2D[]> result;
-        if (first.getRegion() instanceof NormalRegion) {
-            result = second.getRegion().findIntersection(((NormalRegion) first.getRegion()).getParabola());
-        } else if (second.getRegion() instanceof NormalRegion) {
-            result = first.getRegion().findIntersection(((NormalRegion) second.getRegion()).getParabola());
-        } else {
-            result = Optional.empty();
-        }
-        result.ifPresent(o -> first.setEndX(o[0].getX()));
-        return result;
     }
 
 }
