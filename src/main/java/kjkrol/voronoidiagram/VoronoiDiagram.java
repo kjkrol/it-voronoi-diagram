@@ -16,7 +16,7 @@ public class VoronoiDiagram {
     private static final double EPSILON = 0.1;
 
     private final int height;
-    private final Deque<Point2D> points;
+    private final Deque<Point2D> givenPoints;
     @Getter
     private final Set<Region> regions = new HashSet<>();
     private final List<RegionPart> currentParts = new LinkedList<>();
@@ -24,10 +24,10 @@ public class VoronoiDiagram {
     private final Region bottomRegion;
 
     @Builder
-    private VoronoiDiagram(int width, int height, List<Point2D> points) {
+    private VoronoiDiagram(int width, int height, List<Point2D> givenPoints) {
         this.height = height;
-        Collections.sort(points, (o1, o2) -> (int) (o1.getY() - o2.getY()));
-        this.points = new LinkedList<>(points);
+        Collections.sort(givenPoints, (o1, o2) -> (int) (o1.getY() - o2.getY()));
+        this.givenPoints = new LinkedList<>(givenPoints);
         this.bottomRegion = HorizontalRegion.builder().yValue(height).build();
         this.currentParts.addAll(Arrays.asList(
                         RegionPart.builder()
@@ -47,27 +47,20 @@ public class VoronoiDiagram {
     }
 
     public void start() {
-        final Point2D firstPoint = this.points.poll();
+        final Point2D firstPoint = this.givenPoints.poll();
         final AtomicReference<Double> previous = new AtomicReference<>(firstPoint.getY());
-        this.insertNewRegion(firstPoint, 0.0).ifPresent(this.regions::add);
-        this.points.stream().sequential()
+        this.insertNewRegion(firstPoint).ifPresent(this.regions::add);
+        this.givenPoints.stream().sequential()
                 .forEach(point -> {
-                    this.steps(point.getY(), previous.getAndSet(point.getY()));
-                    this.insertNewRegion(point, point.getY() + EPSILON).ifPresent(this.regions::add);
+                    this.moveSweepLine(previous.getAndSet(point.getY()), point.getY());
+                    this.insertNewRegion(point).ifPresent(this.regions::add);
                 });
-        this.steps(this.height, previous.get());
+        this.moveSweepLine(previous.get(), this.height);
     }
 
-    private void steps(final double current, final double previous) {
-        final long limit = Math.round((current - previous) / EPSILON);
-        DoubleStream.iterate(previous, n -> n + EPSILON)
-                .limit(Math.round(limit))
-                .forEachOrdered(this::sweepLineStep);
-    }
-
-    private Optional<Region> insertNewRegion(Point2D point2D, double sweepLine) {
+    private Optional<Region> insertNewRegion(Point2D point2D) {
         final NormalRegion newRegion = NormalRegion.builder().center(point2D).build();
-        newRegion.refresh(sweepLine);
+        newRegion.refresh(point2D.getY() + EPSILON);
         final ListIterator<RegionPart> listIterator = this.currentParts.listIterator();
         while (listIterator.hasNext()) {
             final RegionPart regionPart = listIterator.next();
@@ -82,17 +75,24 @@ public class VoronoiDiagram {
         return Optional.empty();
     }
 
-    private void sweepLineStep(final double sweepLine) {
-        final AtomicReference<RegionPart> reference = new AtomicReference<>(this.currentParts.get(0));
+    private void moveSweepLine(final double startY, final double endY) {
+        final long limit = Math.round((endY - startY) / EPSILON);
+        DoubleStream.iterate(startY, n -> n + EPSILON)
+                .limit(Math.round(limit))
+                .forEachOrdered(this::performSweepLineStep);
+    }
+    
+    private void performSweepLineStep(final double sweepLine) {
+        final AtomicReference<RegionPart> previousRegionPart = new AtomicReference<>(this.currentParts.get(0));
         this.currentParts.stream()
                 .skip(1)
                 .forEach(regionPart -> {
-                            this.fidIntersection(reference.get(), regionPart)
+                            this.fidIntersection(previousRegionPart.get(), regionPart)
                                     .ifPresent(point2Ds -> {
                                         regionPart.setCrossPoints(point2Ds);
-                                        reference.get().find3PointsEvent(point2Ds, EPSILON);
+                                        previousRegionPart.get().find3PointsEvent(point2Ds, EPSILON);
                                     });
-                            reference.set(regionPart);
+                            previousRegionPart.set(regionPart);
                         }
                 );
         final Iterator<RegionPart> iterator = this.currentParts.iterator();
