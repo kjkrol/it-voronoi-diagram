@@ -3,15 +3,20 @@ package kjkrol.voronoidiagram;
 import javafx.geometry.Point2D;
 import lombok.Builder;
 import lombok.Getter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 import java.util.stream.DoubleStream;
 
 /**
  * @author Karol Krol
  */
 public class VoronoiDiagram {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(VoronoiDiagram.class);
 
     private static final double EPSILON = 0.1;
 
@@ -49,16 +54,19 @@ public class VoronoiDiagram {
     public void start() {
         final Point2D firstPoint = this.givenPoints.poll();
         final AtomicReference<Double> previous = new AtomicReference<>(firstPoint.getY());
-        this.insertNewRegion(firstPoint).ifPresent(this.regions::add);
+        this.insertNewRegionPart(firstPoint);
         this.givenPoints.stream().sequential()
                 .forEach(point -> {
-                    this.moveSweepLine(previous.getAndSet(point.getY()), point.getY());
-                    this.insertNewRegion(point).ifPresent(this.regions::add);
+                    final double end = point.getY();
+                    final double start = previous.getAndSet(end);
+                    this.moveSweepLine(start, end);
+                    this.insertNewRegionPart(point);
                 });
         this.moveSweepLine(previous.get(), this.height);
     }
 
-    private Optional<Region> insertNewRegion(Point2D point2D) {
+    private void insertNewRegionPart(Point2D point2D) {
+        LOGGER.info("insertNewRegionPart");
         final NormalRegion newRegion = NormalRegion.builder().center(point2D).build();
         newRegion.refresh(point2D.getY() + EPSILON);
         final ListIterator<RegionPart> listIterator = this.regionsParts.listIterator();
@@ -69,28 +77,39 @@ public class VoronoiDiagram {
                 regionPart.setEndX(point2D.getX());
                 listIterator.add(RegionPart.builder().region(newRegion).endX(point2D.getX()).build());
                 listIterator.add(RegionPart.builder().region(regionPart.getRegion()).endX(oldEndX).build());
-                return Optional.of(newRegion);
+                this.regions.add(newRegion);
+                break;
             }
         }
-        return Optional.empty();
     }
 
     private void moveSweepLine(final double startY, final double endY) {
         final long limit = Math.round((endY - startY) / EPSILON);
         DoubleStream.iterate(startY, n -> n + EPSILON)
                 .limit(Math.round(limit))
-                .forEachOrdered(this::performSweepLineStep);
+                .forEachOrdered(sweepLine -> {
+                    this.refreshRegions(sweepLine);
+                    this.findRegionPartsIntersections();
+                    this.removeUnusedRegionParts();
+                    LOGGER.info("regionsParts => {}", regionsParts.stream()
+                            .map(rp -> rp.getRegion().getClass().getSimpleName() + " [" + rp.getEndX() + ']')
+                            .collect(Collectors.toList())
+                    );
+                });
     }
-    
-    private void performSweepLineStep(final double sweepLine) {
+
+    private void refreshRegions(final double sweepLine) {
+        this.regions.stream().forEachOrdered(region -> ((NormalRegion) region).refresh(sweepLine));
+    }
+
+    private void findRegionPartsIntersections() {
         final AtomicReference<RegionPart> previousRegionPart = new AtomicReference<>(this.regionsParts.get(0));
         this.regionsParts.stream()
                 .skip(1)
-                .forEach(regionPart -> {
-                            previousRegionPart.get().fidIntersection(regionPart);
-                            previousRegionPart.set(regionPart);
-                        }
-                );
+                .forEach(regionPart -> previousRegionPart.getAndSet(regionPart).fidIntersection(regionPart));
+    }
+
+    private void removeUnusedRegionParts() {
         final Iterator<RegionPart> iterator = this.regionsParts.iterator();
         while (iterator.hasNext()) {
             if (iterator.next().getDeleteMark().get()) {

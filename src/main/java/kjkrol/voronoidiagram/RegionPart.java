@@ -3,9 +3,10 @@ package kjkrol.voronoidiagram;
 import javafx.geometry.Point2D;
 import lombok.Builder;
 import lombok.Data;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Arrays;
-import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -14,43 +15,52 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @Data
 class RegionPart {
 
-    private static final double EPSILON = 0.1;
+    private static final Logger LOGGER = LoggerFactory.getLogger(RegionPart.class);
 
-    private static final Point2D[] EMPTY_ARRAY = new Point2D[0];
+    private static final double EPSILON = 0.01;
 
     private final Region region;
     private double endX;
-    private Point2D[] crossPoints = EMPTY_ARRAY;
+    private Point2D crossPoint;
     private AtomicBoolean deleteMark = new AtomicBoolean();
 
     @Builder
-    public RegionPart(Region region, double endX) {
+    RegionPart(Region region, double endX) {
         this.region = region;
         this.endX = endX;
     }
 
-    public Optional<Point2D[]> fidIntersection(final RegionPart that) {
-        Optional<Point2D[]> result;
+    void fidIntersection(final RegionPart next) {
+        NormalRegion normalRegion;
+        Region otherRegion;
         if (this.getRegion() instanceof NormalRegion) {
-            result = that.getRegion().findIntersection(((NormalRegion) this.getRegion()).getParabola());
-        } else if (that.getRegion() instanceof NormalRegion) {
-            result = this.getRegion().findIntersection(((NormalRegion) that.getRegion()).getParabola());
-        } else {
-            result = Optional.empty();
+            normalRegion = (NormalRegion) this.getRegion();
+            otherRegion = next.getRegion();
+
+            otherRegion.findIntersection(normalRegion.getParabola()).ifPresent(point2Ds -> {
+                final int index = point2Ds.length > 1 ? 1 : 0;
+                this.setEndX(point2Ds[index].getX());
+                next.setCrossPoint(point2Ds[index]);
+                this.findTripleIntersection(point2Ds, EPSILON);
+            });
+
+        } else if (next.getRegion() instanceof NormalRegion) {
+            normalRegion = (NormalRegion) next.getRegion();
+            otherRegion = this.getRegion();
+
+            otherRegion.findIntersection(normalRegion.getParabola()).ifPresent(point2Ds -> {
+                this.setEndX(point2Ds[0].getX());
+                next.setCrossPoint(point2Ds[0]);
+                this.findTripleIntersection(point2Ds, EPSILON);
+            });
         }
-        result.ifPresent(point2Ds -> {
-            this.setEndX(point2Ds[0].getX());
-            that.setCrossPoints(point2Ds);
-            this.findTripleIntersection(point2Ds, EPSILON);
-        });
-        return result;
     }
 
-    public void findTripleIntersection(Point2D[] point2Ds, double precision) {
-        Arrays.stream(this.crossPoints)
-                .filter(point -> Arrays.stream(point2Ds)
-                        .anyMatch(p -> p.distance(point) < precision))
-                .peek(System.out::println)
+
+    private void findTripleIntersection(Point2D[] point2Ds, double precision) {
+        Arrays.stream(point2Ds)
+                .filter(p -> this.crossPoint!= null && p.distance(this.crossPoint) < precision)
+                .peek(o -> LOGGER.info("3pe = {}", o))
                 .findFirst()
                 .ifPresent(point2D -> deleteMark.set(true));
     }
